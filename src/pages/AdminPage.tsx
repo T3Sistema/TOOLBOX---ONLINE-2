@@ -3,7 +3,7 @@ import { Tool, WaitingUser, ActiveUser } from '../types';
 import Modal from '../components/Modal';
 import { supabase } from '../supabaseClient';
 
-type AdminTab = 'dashboard' | 'tools' | 'add_edit' | 'users' | 'categories' | 'active_users';
+type AdminTab = 'dashboard' | 'tools' | 'add_edit' | 'users' | 'categories' | 'active_users' | 'admins' | 'add_edit_admin';
 
 interface AdminPageProps {
     allTools: Tool[];
@@ -15,6 +15,7 @@ const EMOJIS = ['✨', '🚀', '🤖', '💡', '📈', '📊', '🎨', '📝', '
 
 type ToolFormData = Omit<Tool, 'id' | 'tooltip' | 'status' | 'category'> & { status: 'ativo' | 'inativo', category: string };
 type CategoryFormData = { id: number | null; nome: string; descricao: string };
+type AdminFormData = { id: string | null; nome: string; email: string; senha?: string; };
 
 const AdminPage: React.FC<AdminPageProps> = ({ allTools: initialTools, onLogout, refreshTools }) => {
     const [activeTab, setActiveTab] = useState<AdminTab>('dashboard');
@@ -22,6 +23,7 @@ const AdminPage: React.FC<AdminPageProps> = ({ allTools: initialTools, onLogout,
     const [categories, setCategories] = useState<{id: number, nome: string, descricao: string | null}[]>([]);
     const [waitingList, setWaitingList] = useState<WaitingUser[]>([]);
     const [activeUsers, setActiveUsers] = useState<ActiveUser[]>([]);
+    const [admins, setAdmins] = useState<ActiveUser[]>([]);
     const [isSubmitting, setIsSubmitting] = useState(false);
     
     // States for forms and modals
@@ -30,6 +32,9 @@ const AdminPage: React.FC<AdminPageProps> = ({ allTools: initialTools, onLogout,
     const [userToDeny, setUserToDeny] = useState<WaitingUser | null>(null);
     const [userToApprove, setUserToApprove] = useState<WaitingUser | null>(null);
     const [userToEdit, setUserToEdit] = useState<ActiveUser | null>(null);
+    const [userToDelete, setUserToDelete] = useState<ActiveUser | null>(null);
+    const [adminToEdit, setAdminToEdit] = useState<ActiveUser | null>(null);
+    const [adminToDelete, setAdminToDelete] = useState<ActiveUser | null>(null);
     const [categoryToEdit, setCategoryToEdit] = useState<{id: number, nome: string, descricao: string | null} | null>(null);
     const [categoryToDelete, setCategoryToDelete] = useState<{id: number, nome: string} | null>(null);
     const [toastMessage, setToastMessage] = useState('');
@@ -46,6 +51,9 @@ const AdminPage: React.FC<AdminPageProps> = ({ allTools: initialTools, onLogout,
     
     const initialCategoryFormState: CategoryFormData = { id: null, nome: '', descricao: '' };
     const [categoryFormData, setCategoryFormData] = useState<CategoryFormData>(initialCategoryFormState);
+
+    const initialAdminFormState: AdminFormData = { id: null, nome: '', email: '', senha: '' };
+    const [adminFormData, setAdminFormData] = useState<AdminFormData>(initialAdminFormState);
 
     const [isEmojiPickerOpen, setIsEmojiPickerOpen] = useState(false);
 
@@ -80,9 +88,15 @@ const AdminPage: React.FC<AdminPageProps> = ({ allTools: initialTools, onLogout,
     }, []);
 
     const fetchActiveUsers = useCallback(async () => {
-        const { data, error } = await supabase.from('perfis').select('id, nome, email, nivel, is_active').order('nome');
+        const { data, error } = await supabase.from('perfis').select('*').eq('is_admin', false).order('nome');
         if (error) console.error("Erro ao buscar usuários ativos:", error);
         else setActiveUsers(data || []);
+    }, []);
+    
+    const fetchAdmins = useCallback(async () => {
+        const { data, error } = await supabase.from('perfis').select('*').eq('is_admin', true).order('nome');
+        if (error) console.error("Erro ao buscar administradores:", error);
+        else setAdmins(data || []);
     }, []);
 
 
@@ -90,9 +104,10 @@ const AdminPage: React.FC<AdminPageProps> = ({ allTools: initialTools, onLogout,
         fetchCategories();
         fetchWaitingList();
         fetchActiveUsers();
+        fetchAdmins();
         const intervalId = setInterval(fetchWaitingList, 30000); // Poll waiting list
         return () => clearInterval(intervalId);
-    }, [fetchCategories, fetchWaitingList, fetchActiveUsers]);
+    }, [fetchCategories, fetchWaitingList, fetchActiveUsers, fetchAdmins]);
 
     // Effect to reset forms when switching tabs or items
     useEffect(() => {
@@ -106,6 +121,19 @@ const AdminPage: React.FC<AdminPageProps> = ({ allTools: initialTools, onLogout,
             setToolFormData(initialToolFormState);
         }
     }, [activeTab, toolToEdit]);
+
+    useEffect(() => {
+        if (activeTab === 'add_edit_admin' && adminToEdit) {
+            setAdminFormData({
+                id: adminToEdit.id,
+                nome: adminToEdit.nome,
+                email: adminToEdit.email,
+                senha: '',
+            });
+        } else {
+            setAdminFormData(initialAdminFormState);
+        }
+    }, [activeTab, adminToEdit]);
     
      useEffect(() => {
         if (categoryToEdit) {
@@ -295,6 +323,22 @@ const AdminPage: React.FC<AdminPageProps> = ({ allTools: initialTools, onLogout,
             alert(`Erro ao atualizar usuário: ${error.message}`);
         }
     };
+
+    const handleDeleteUser = async () => {
+        if (!userToDelete) return;
+        setIsSubmitting(true);
+        try {
+            const { error } = await supabase.from('perfis').delete().eq('id', userToDelete.id);
+            if (error) throw error;
+            showToast(`Usuário ${userToDelete.nome} excluído com sucesso.`);
+            await fetchActiveUsers();
+        } catch (error: any) {
+            alert(`Erro ao excluir usuário: ${error.message}`);
+        } finally {
+            setUserToDelete(null);
+            setIsSubmitting(false);
+        }
+    };
     
     const handleOpenEditModal = async (user: ActiveUser) => {
         setIsSubmitting(true);
@@ -360,6 +404,57 @@ const AdminPage: React.FC<AdminPageProps> = ({ allTools: initialTools, onLogout,
         }
     };
 
+    const handleSubmitAdmin = async (e: React.FormEvent) => {
+        e.preventDefault();
+        setIsSubmitting(true);
+        try {
+            const payload: { nome: string; email: string; senha?: string; is_admin: boolean, is_active: boolean } = {
+                nome: adminFormData.nome,
+                email: adminFormData.email,
+                is_admin: true,
+                is_active: true,
+            };
+            if (adminFormData.senha) {
+                payload.senha = adminFormData.senha;
+            }
+
+            if (adminToEdit) { // Update
+                if (!payload.senha) delete payload.senha; // Don't update password if empty
+                const { error } = await supabase.from('perfis').update(payload).eq('id', adminToEdit.id);
+                if (error) throw error;
+                showToast('Administrador atualizado com sucesso!');
+            } else { // Create
+                if (!payload.senha) throw new Error("A senha é obrigatória para novos administradores.");
+                const { error } = await supabase.from('perfis').insert(payload);
+                if (error) throw error;
+                showToast('Administrador adicionado com sucesso!');
+            }
+            await fetchAdmins();
+            setActiveTab('admins');
+            setAdminToEdit(null);
+        } catch (error: any) {
+            alert(`Erro: ${error.message}`);
+        } finally {
+            setIsSubmitting(false);
+        }
+    };
+
+    const handleDeleteAdmin = async () => {
+        if (!adminToDelete) return;
+        setIsSubmitting(true);
+        try {
+            const { error } = await supabase.from('perfis').delete().eq('id', adminToDelete.id);
+            if (error) throw error;
+            showToast('Administrador excluído com sucesso!');
+            await fetchAdmins();
+        } catch (error: any) {
+            alert(`Erro ao excluir administrador: ${error.message}`);
+        } finally {
+            setAdminToDelete(null);
+            setIsSubmitting(false);
+        }
+    };
+
     const renderDashboard = () => (
         <div className="admin-content-panel">
             <h2>Visão Geral</h2>
@@ -367,7 +462,7 @@ const AdminPage: React.FC<AdminPageProps> = ({ allTools: initialTools, onLogout,
                 <div className="summary-card"><h3>Total de Ferramentas</h3><p className="summary-card-value">{tools.length}</p><span className="summary-card-footer">{tools.filter(t => t.status === 'ativo').length} ativas</span></div>
                 <div className="summary-card"><h3>Usuários Ativos</h3><p className="summary-card-value">{activeUsers.length}</p><span className="summary-card-footer">{activeUsers.filter(u => u.is_active).length} contas ativas</span></div>
                 <div className="summary-card"><h3>Usuários Pendentes</h3><p className="summary-card-value">{waitingList.length}</p><span className="summary-card-footer">Aguardando aprovação</span></div>
-                <div className="summary-card"><h3>Categorias</h3> <p className="summary-card-value">{categories.length}</p><span className="summary-card-footer">em todo o sistema</span></div>
+                <div className="summary-card"><h3>Administradores</h3><p className="summary-card-value">{admins.length}</p><span className="summary-card-footer">gerenciando o sistema</span></div>
             </div>
         </div>
     );
@@ -465,11 +560,53 @@ const AdminPage: React.FC<AdminPageProps> = ({ allTools: initialTools, onLogout,
                                 <button className="admin-btn-icon" title="Editar Permissões" onClick={() => handleOpenEditModal(user)}>
                                     <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>
                                 </button>
+                                <button className="admin-btn-icon delete" title="Excluir Usuário" onClick={() => setUserToDelete(user)}>
+                                    <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path><line x1="10" y1="11" x2="10" y2="17"></line><line x1="14" y1="11" x2="14" y2="17"></line></svg>
+                                </button>
                             </td>
                         </tr>))}
                     </tbody>
                 </table>
             </div>
+        </div>
+    );
+    
+    const renderAdminsPanel = () => (
+        <div className="admin-content-panel">
+            <div className="panel-header"><h2>Gerenciar Administradores</h2><button className="login-btn" onClick={() => { setAdminToEdit(null); setActiveTab('add_edit_admin'); }}>+ Adicionar Novo</button></div>
+            <div className="table-container">
+                <table className="admin-table">
+                    <thead><tr><th>Nome</th><th>Email</th><th>Ações</th></tr></thead>
+                    <tbody>
+                        {admins.map(admin => (
+                            <tr key={admin.id}>
+                                <td>{admin.nome}</td><td>{admin.email}</td>
+                                <td className="actions-cell">
+                                    <button className="admin-btn-icon" title="Editar" onClick={() => { setAdminToEdit(admin); setActiveTab('add_edit_admin'); }}><svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg></button>
+                                    <button className="admin-btn-icon delete" title="Excluir" onClick={() => setAdminToDelete(admin)}><svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path><line x1="10" y1="11" x2="10" y2="17"></line><line x1="14" y1="11" x2="14" y2="17"></line></svg></button>
+                                </td>
+                            </tr>
+                        ))}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    );
+
+    const renderAdminForm = () => (
+        <div className="admin-content-panel">
+            <div className="panel-header"><h2>{adminToEdit ? 'Editar Administrador' : 'Adicionar Novo Administrador'}</h2></div>
+            <form onSubmit={handleSubmitAdmin} className="admin-panel-form">
+                <div className="admin-form-grid" style={{ gridTemplateColumns: '1fr' }}>
+                    <div className="form-group"><label htmlFor="admin-name">Nome Completo</label><input id="admin-name" type="text" value={adminFormData.nome} onChange={e => setAdminFormData({ ...adminFormData, nome: e.target.value })} required /></div>
+                    <div className="form-group"><label htmlFor="admin-email">Email</label><input id="admin-email" type="email" value={adminFormData.email} onChange={e => setAdminFormData({ ...adminFormData, email: e.target.value })} required /></div>
+                    <div className="form-group"><label htmlFor="admin-senha">Senha</label><input id="admin-senha" type="password" value={adminFormData.senha} onChange={e => setAdminFormData({ ...adminFormData, senha: e.target.value })} placeholder={adminToEdit ? "Deixe em branco para não alterar" : ""} required={!adminToEdit} /></div>
+                </div>
+                <div className="admin-panel-actions">
+                    <button type="button" onClick={() => setActiveTab('admins')} className="admin-btn secondary">Cancelar</button>
+                    <button type="submit" className="login-btn" disabled={isSubmitting}>{isSubmitting ? 'Salvando...' : 'Salvar Administrador'}</button>
+                </div>
+            </form>
         </div>
     );
 
@@ -481,6 +618,8 @@ const AdminPage: React.FC<AdminPageProps> = ({ allTools: initialTools, onLogout,
             case 'users': return renderWaitingList();
             case 'categories': return renderCategoriesPanel();
             case 'active_users': return renderActiveUsersPanel();
+            case 'admins': return renderAdminsPanel();
+            case 'add_edit_admin': return renderAdminForm();
             default: return <h2>Seção não encontrada</h2>;
         }
     };
@@ -497,6 +636,7 @@ const AdminPage: React.FC<AdminPageProps> = ({ allTools: initialTools, onLogout,
                 <button className={`admin-nav-tab ${activeTab === 'categories' ? 'active' : ''}`} onClick={() => setActiveTab('categories')}>Categorias</button>
                 <button className={`admin-nav-tab ${activeTab === 'users' ? 'active' : ''}`} onClick={() => setActiveTab('users')}>Lista de Espera{waitingList.length > 0 && <span className="notification-badge">{waitingList.length}</span>}</button>
                 <button className={`admin-nav-tab ${activeTab === 'active_users' ? 'active' : ''}`} onClick={() => setActiveTab('active_users')}>Usuários Ativos</button>
+                <button className={`admin-nav-tab ${activeTab === 'admins' ? 'active' : ''}`} onClick={() => setActiveTab('admins')}>Administradores</button>
             </nav>
             <main className="admin-content-area">{renderContent()}</main>
 
@@ -630,8 +770,28 @@ const AdminPage: React.FC<AdminPageProps> = ({ allTools: initialTools, onLogout,
                 </div>
             </Modal>
 
-             <Modal isOpen={!!userToDeny} onClose={() => setUserToDeny(null)}>
+            <Modal isOpen={!!userToDeny} onClose={() => setUserToDeny(null)}>
                 <div className="delete-modal"><div className="modal-header"><h2>Negar Usuário</h2><p>Deseja <strong>negar acesso</strong> à ToolBox para <strong>{userToDeny?.nome}</strong>?</p></div><div className="modal-actions"><button onClick={() => setUserToDeny(null)} className="admin-btn secondary">Cancelar</button><button onClick={handleDenyUser} className="login-btn confirm-delete-btn">Confirmar</button></div></div>
+            </Modal>
+
+            <Modal isOpen={!!userToDelete} onClose={() => setUserToDelete(null)}>
+                <div className="delete-modal">
+                    <div className="modal-header"><h2>Confirmar Exclusão</h2><p>Você tem certeza que quer excluir o usuário "<strong>{userToDelete?.nome}</strong>"?<br/>Esta ação é permanente e não pode ser desfeita.</p></div>
+                    <div className="modal-actions">
+                        <button onClick={() => setUserToDelete(null)} className="admin-btn secondary">Cancelar</button>
+                        <button onClick={handleDeleteUser} className="login-btn confirm-delete-btn" disabled={isSubmitting}>{isSubmitting ? "Excluindo..." : "Confirmar Exclusão"}</button>
+                    </div>
+                </div>
+            </Modal>
+
+            <Modal isOpen={!!adminToDelete} onClose={() => setAdminToDelete(null)}>
+                <div className="delete-modal">
+                    <div className="modal-header"><h2>Confirmar Exclusão</h2><p>Você tem certeza que quer excluir o administrador "<strong>{adminToDelete?.nome}</strong>"?<br/>Esta ação não pode ser desfeita.</p></div>
+                    <div className="modal-actions">
+                        <button onClick={() => setAdminToDelete(null)} className="admin-btn secondary">Cancelar</button>
+                        <button onClick={handleDeleteAdmin} className="login-btn confirm-delete-btn" disabled={isSubmitting}>{isSubmitting ? "Excluindo..." : "Confirmar Exclusão"}</button>
+                    </div>
+                </div>
             </Modal>
             
             <Modal isOpen={!!toastMessage} onClose={() => setToastMessage('')} type="toast">{toastMessage}</Modal>

@@ -31,4 +31,5 @@ export interface ActiveUser {
     email: string;
     nivel: 'Iniciante' | 'Intermediário' | 'Avançado';
     is_active: boolean;
+    is_admin: boolean;
 }

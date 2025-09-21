@@ -12,7 +12,7 @@ type View = 'login' | 'onboarding' | 'toolbox' | 'admin';
 
 const App: React.FC = () => {
     const [view, setView] = useState<View>('login');
-    const [isLoading, setIsLoading] = useState(false);
+    const [isLoading, setIsLoading] = useState(true);
     const [loadingText, setLoadingText] = useState('Iniciando Sistema...');
     const [user, setUser] = useState<User | null>(null);
     const [allTools, setAllTools] = useState<Tool[]>([]);
@@ -100,6 +100,52 @@ const App: React.FC = () => {
         }
     }, []);
 
+     // Session Restore Logic
+    useEffect(() => {
+        const restoreSession = async () => {
+            const savedSession = localStorage.getItem('session');
+            if (!savedSession) {
+                setIsLoading(false);
+                return;
+            }
+
+            setLoadingText('Restaurando sua sessão...');
+            try {
+                const sessionData = JSON.parse(savedSession);
+                await fetchAllTools();
+
+                if (sessionData.isAdmin && sessionData.view === 'admin') {
+                    setView('admin');
+                } else if (sessionData.user && sessionData.view) {
+                    setUser(sessionData.user);
+                    const userPermittedTools = sessionData.permittedTools || [];
+                    setPermittedTools(userPermittedTools);
+
+                    if (sessionData.view === 'toolbox') {
+                        const userSelectedCategories = sessionData.userCategories || [];
+                        setUserCategories(userSelectedCategories);
+                        const toolsForContext = userPermittedTools.filter((tool: Tool) =>
+                            userSelectedCategories.includes(tool.category)
+                        );
+                        setActiveTools(toolsForContext);
+                        setView('toolbox');
+                    } else {
+                        setView('onboarding');
+                    }
+                } else {
+                    localStorage.removeItem('session');
+                }
+            } catch (error) {
+                console.error("Falha ao restaurar sessão, limpando:", error);
+                localStorage.removeItem('session');
+            } finally {
+                setIsLoading(false);
+            }
+        };
+
+        restoreSession();
+    }, [fetchAllTools]);
+
     const handleLoginSuccess = async (loggedInUser: User) => {
         setUser(loggedInUser);
         setIsLoading(true);
@@ -132,6 +178,11 @@ const App: React.FC = () => {
                 }));
     
             setPermittedTools(userTools);
+            localStorage.setItem('session', JSON.stringify({
+                user: loggedInUser,
+                view: 'onboarding',
+                permittedTools: userTools
+            }));
             setView('onboarding');
         } catch (error) {
             console.error("Falha ao carregar dados do usuário:", error);
@@ -146,11 +197,16 @@ const App: React.FC = () => {
         setIsLoading(true);
         setLoadingText('Montando sua ToolBox...');
         
-        // This is still needed for the ChatWidget context
         const toolsForChat = permittedTools.filter(tool => selectedCategories.includes(tool.category));
         setActiveTools(toolsForChat);
 
         setUserCategories(selectedCategories);
+        localStorage.setItem('session', JSON.stringify({
+            user,
+            view: 'toolbox',
+            permittedTools,
+            userCategories: selectedCategories
+        }));
         setView('toolbox');
         
         setTimeout(() => setIsLoading(false), 500);
@@ -161,6 +217,7 @@ const App: React.FC = () => {
         setIsLoading(true);
         setLoadingText('Carregando sistema...');
         await fetchAllTools();
+        localStorage.setItem('session', JSON.stringify({ isAdmin: true, view: 'admin' }));
         setIsLoading(false);
         setView('admin');
     };
@@ -175,6 +232,9 @@ const App: React.FC = () => {
     };
 
     const handleBackToOnboarding = () => {
+        const sessionData = JSON.parse(localStorage.getItem('session') || '{}');
+        sessionData.view = 'onboarding';
+        localStorage.setItem('session', JSON.stringify(sessionData));
         setView('onboarding');
     };
 
