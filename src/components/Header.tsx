@@ -10,6 +10,7 @@ interface HeaderProps {
     onThemeChange: () => void;
     onLogout: () => void;
     onBackToOnboarding: () => void;
+    onChangePassword: () => void;
 }
 
 const Header: React.FC<HeaderProps> = ({
@@ -22,6 +23,7 @@ const Header: React.FC<HeaderProps> = ({
     onThemeChange,
     onLogout,
     onBackToOnboarding,
+    onChangePassword,
 }) => {
     const currentTheme = document.documentElement.getAttribute('data-theme') || 'neon';
     const themeIcons = { dark: '🌙', light: '☀️', neon: '👽' };
@@ -58,6 +60,7 @@ const Header: React.FC<HeaderProps> = ({
                 <button onClick={onThemeChange} className="theme-switcher" title="Alternar tema">
                     <span>{themeIcons[currentTheme as keyof typeof themeIcons] || '🌙'}</span>
                 </button>
+                <button onClick={onChangePassword} className="logout-btn">Alterar Senha</button>
                 <button onClick={onLogout} className="logout-btn">Sair</button>
             </div>
         </header>

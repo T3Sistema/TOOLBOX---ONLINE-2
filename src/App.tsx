@@ -15,14 +15,40 @@ const App: React.FC = () => {
     const [isLoading, setIsLoading] = useState(true);
     const [loadingText, setLoadingText] = useState('Iniciando Sistema...');
     const [user, setUser] = useState<User | null>(null);
+    const [adminUser, setAdminUser] = useState<User | null>(null);
     const [allTools, setAllTools] = useState<Tool[]>([]);
     const [activeTools, setActiveTools] = useState<Tool[]>([]);
     const [userCategories, setUserCategories] = useState<string[]>([]);
     const [devtoolsBlocked, setDevtoolsBlocked] = useState(false);
     const [permittedTools, setPermittedTools] = useState<Tool[]>([]);
 
-    // Devtools blocker logic
+    // Proteção anti-DevTools aprimorada
     useEffect(() => {
+        // Função para detectar dispositivos móveis e tablets de forma mais confiável.
+        function isMobileOrTablet() {
+            const userAgent = navigator.userAgent;
+
+            // 1. Verificação padrão via User Agent para a maioria dos celulares.
+            if (/Android|webOS|iPhone|iPod|BlackBerry|IEMobile|Opera Mini/i.test(userAgent)) {
+                return true;
+            }
+
+            // 2. Detecção específica para iPads (com iPadOS 13+) que se identificam como um desktop Mac.
+            if (/iPad/i.test(userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1)) {
+                return true;
+            }
+
+            return false;
+        }
+
+        // Se for um dispositivo móvel ou tablet, o script de proteção é interrompido.
+        if (isMobileOrTablet()) {
+            return;
+        }
+
+        // As proteções abaixo serão executadas APENAS em DESKTOPS.
+
+        // Bloqueio de teclas de atalho comuns para abrir DevTools
         const blockDevTools = (e: KeyboardEvent) => {
             if (
                 e.key === 'F12' ||
@@ -33,24 +59,31 @@ const App: React.FC = () => {
             ) {
                 e.preventDefault();
                 setDevtoolsBlocked(true);
+                return false;
             }
         };
 
-        const preventContextMenu = (e: MouseEvent) => e.preventDefault();
-        
+        // Impede o clique com o botão direito do mouse (menu de contexto)
+        const preventContextMenu = (e: MouseEvent) => {
+            e.preventDefault();
+        };
+
         document.addEventListener('keydown', blockDevTools);
         document.addEventListener('contextmenu', preventContextMenu);
 
-        const intervalId = setInterval(() => {
+        // Verifica periodicamente se as DevTools foram abertas medindo o tamanho da janela
+        const devToolsCheckInterval = setInterval(() => {
             if (window.outerHeight - window.innerHeight > 200 || window.outerWidth - window.innerWidth > 200) {
                 setDevtoolsBlocked(true);
+                // Interrompe a verificação para economizar recursos
+                clearInterval(devToolsCheckInterval);
             }
         }, 1000);
 
         return () => {
             document.removeEventListener('keydown', blockDevTools);
             document.removeEventListener('contextmenu', preventContextMenu);
-            clearInterval(intervalId);
+            clearInterval(devToolsCheckInterval);
         };
     }, []);
 
@@ -115,6 +148,7 @@ const App: React.FC = () => {
                 await fetchAllTools();
 
                 if (sessionData.isAdmin && sessionData.view === 'admin') {
+                    setAdminUser(sessionData.user || null);
                     setView('admin');
                 } else if (sessionData.user && sessionData.view) {
                     setUser(sessionData.user);
@@ -213,11 +247,12 @@ const App: React.FC = () => {
     };
 
 
-    const handleAdminLoginSuccess = async () => {
+    const handleAdminLoginSuccess = async (loggedInAdmin: User) => {
         setIsLoading(true);
         setLoadingText('Carregando sistema...');
         await fetchAllTools();
-        localStorage.setItem('session', JSON.stringify({ isAdmin: true, view: 'admin' }));
+        setAdminUser(loggedInAdmin);
+        localStorage.setItem('session', JSON.stringify({ isAdmin: true, view: 'admin', user: loggedInAdmin }));
         setIsLoading(false);
         setView('admin');
     };
@@ -225,6 +260,7 @@ const App: React.FC = () => {
     const handleLogout = () => {
         localStorage.clear();
         setUser(null);
+        setAdminUser(null);
         setActiveTools([]);
         setPermittedTools([]);
         setUserCategories([]);
@@ -241,7 +277,7 @@ const App: React.FC = () => {
     if (devtoolsBlocked) {
         return (
             <div className="devtools-blocker">
-                <h1>ACESSO RESTRITO</h1>
+                <h1>Acesso Bloqueado ❌</h1>
             </div>
         );
     }
@@ -279,7 +315,7 @@ const App: React.FC = () => {
             )}
 
             {view === 'admin' && (
-                <AdminPage allTools={allTools} onLogout={handleLogout} refreshTools={fetchAllTools} />
+                <AdminPage user={adminUser} allTools={allTools} onLogout={handleLogout} refreshTools={fetchAllTools} />
             )}
 
             {view === 'toolbox' && (

@@ -7,7 +7,7 @@ type FormType = 'login' | 'register';
 
 interface LoginPageProps {
     onLoginSuccess: (user: User) => void;
-    onAdminLoginSuccess: () => void;
+    onAdminLoginSuccess: (user: User) => void;
 }
 
 const EyeIcon: React.FC = () => (
@@ -68,7 +68,7 @@ const LoginPage: React.FC<LoginPageProps> = ({ onLoginSuccess, onAdminLoginSucce
             }
 
             if (data.is_admin) {
-                onAdminLoginSuccess();
+                onAdminLoginSuccess({ id: data.id, name: data.nome });
             } else {
                 const user: User = { id: data.id, name: data.nome };
                 onLoginSuccess(user);

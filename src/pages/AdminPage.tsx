@@ -1,11 +1,12 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { Tool, WaitingUser, ActiveUser } from '../types';
+import { Tool, WaitingUser, ActiveUser, User } from '../types';
 import Modal from '../components/Modal';
 import { supabase } from '../supabaseClient';
 
 type AdminTab = 'dashboard' | 'tools' | 'add_edit' | 'users' | 'categories' | 'active_users' | 'admins' | 'add_edit_admin';
 
 interface AdminPageProps {
+    user: User | null;
     allTools: Tool[];
     onLogout: () => void;
     refreshTools: () => void;
@@ -17,7 +18,28 @@ type ToolFormData = Omit<Tool, 'id' | 'tooltip' | 'status' | 'category'> & { sta
 type CategoryFormData = { id: number | null; nome: string; descricao: string };
 type AdminFormData = { id: string | null; nome: string; email: string; senha?: string; };
 
-const AdminPage: React.FC<AdminPageProps> = ({ allTools: initialTools, onLogout, refreshTools }) => {
+const EyeIcon: React.FC = () => (
+    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
+        <circle cx="12" cy="12" r="3"></circle>
+    </svg>
+);
+
+const EyeOffIcon: React.FC = () => (
+     <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"></path>
+        <line x1="1" y1="1" x2="23" y2="23"></line>
+    </svg>
+);
+
+const PasswordToggle: React.FC<{isVisible: boolean, onToggle: () => void}> = ({isVisible, onToggle}) => (
+    <button type="button" onClick={onToggle} className="toggle-password" aria-label={isVisible ? "Ocultar senha" : "Mostrar senha"}>
+        {isVisible ? <EyeOffIcon /> : <EyeIcon />}
+    </button>
+);
+
+
+const AdminPage: React.FC<AdminPageProps> = ({ user, allTools: initialTools, onLogout, refreshTools }) => {
     const [activeTab, setActiveTab] = useState<AdminTab>('dashboard');
     const [tools, setTools] = useState<Tool[]>(initialTools);
     const [categories, setCategories] = useState<{id: number, nome: string, descricao: string | null}[]>([]);
@@ -41,6 +63,11 @@ const AdminPage: React.FC<AdminPageProps> = ({ allTools: initialTools, onLogout,
     const [selectedTools, setSelectedTools] = useState<Set<number>>(new Set());
     const [groupedTools, setGroupedTools] = useState<Record<string, Tool[]>>({});
     const [expandedCategories, setExpandedCategories] = useState<Set<string>>(new Set());
+    const [isPasswordModalOpen, setIsPasswordModalOpen] = useState(false);
+    const [showCurrentPassword, setShowCurrentPassword] = useState(false);
+    const [showNewPassword, setShowNewPassword] = useState(false);
+    const [passwordError, setPasswordError] = useState('');
+    const [passwordSuccess, setPasswordSuccess] = useState('');
 
 
     const initialToolFormState: ToolFormData = {
@@ -147,6 +174,66 @@ const AdminPage: React.FC<AdminPageProps> = ({ allTools: initialTools, onLogout,
     const showToast = (message: string) => {
         setToastMessage(message);
         setTimeout(() => setToastMessage(''), 2500);
+    };
+
+    const handlePasswordChange = async (e: React.FormEvent<HTMLFormElement>) => {
+        e.preventDefault();
+        if (!user) return;
+    
+        setPasswordError('');
+        setPasswordSuccess('');
+        setIsSubmitting(true);
+    
+        const formData = new FormData(e.currentTarget);
+        const currentPassword = formData.get('currentPassword') as string;
+        const newPassword = formData.get('newPassword') as string;
+        const confirmPassword = formData.get('confirmPassword') as string;
+    
+        if (newPassword !== confirmPassword) {
+            setPasswordError('As novas senhas não coincidem.');
+            setIsSubmitting(false);
+            return;
+        }
+        if (newPassword.length < 6) {
+            setPasswordError('A nova senha deve ter pelo menos 6 caracteres.');
+            setIsSubmitting(false);
+            return;
+        }
+    
+        try {
+            const { data, error } = await supabase
+                .from('perfis')
+                .select('id')
+                .eq('id', user.id)
+                .eq('senha', currentPassword)
+                .single();
+    
+            if (error || !data) {
+                setPasswordError('A senha atual está incorreta.');
+                return;
+            }
+    
+            const { error: updateError } = await supabase
+                .from('perfis')
+                .update({ senha: newPassword })
+                .eq('id', user.id);
+            
+            if (updateError) {
+                throw updateError;
+            }
+    
+            setPasswordSuccess('Senha alterada com sucesso!');
+            setTimeout(() => {
+                setIsPasswordModalOpen(false);
+                setPasswordSuccess('');
+                setPasswordError('');
+            }, 2000);
+    
+        } catch (error: any) {
+            setPasswordError(`Erro ao atualizar a senha: ${error.message}`);
+        } finally {
+            setIsSubmitting(false);
+        }
     };
 
     const handleSubmitTool = async (e: React.FormEvent) => {
@@ -628,7 +715,12 @@ const AdminPage: React.FC<AdminPageProps> = ({ allTools: initialTools, onLogout,
         <div className="admin-dashboard-layout">
             <header className="admin-main-header">
                 <div className="admin-header-left"><img src="https://aisfizoyfpcisykarrnt.supabase.co/storage/v1/object/public/imagens/LOGO%20TRIAD3%20.png" alt="Logo" className="admin-header-logo" /><h1>Painel do Administrador</h1></div>
-                <button onClick={onLogout} className="logout-btn">Sair<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path><polyline points="16 17 21 12 16 7"></polyline><line x1="21" y1="12" x2="9" y2="12"></line></svg></button>
+                <div className="header-right">
+                    <button onClick={() => setIsPasswordModalOpen(true)} className="logout-btn" style={{border: '1px solid var(--color-border)'}}>
+                        Alterar Senha
+                    </button>
+                    <button onClick={onLogout} className="logout-btn">Sair<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path><polyline points="16 17 21 12 16 7"></polyline><line x1="21" y1="12" x2="9" y2="12"></line></svg></button>
+                </div>
             </header>
             <nav className="admin-nav-tabs">
                 <button className={`admin-nav-tab ${activeTab === 'dashboard' ? 'active' : ''}`} onClick={() => setActiveTab('dashboard')}>Visão Geral</button>
@@ -639,6 +731,51 @@ const AdminPage: React.FC<AdminPageProps> = ({ allTools: initialTools, onLogout,
                 <button className={`admin-nav-tab ${activeTab === 'admins' ? 'active' : ''}`} onClick={() => setActiveTab('admins')}>Administradores</button>
             </nav>
             <main className="admin-content-area">{renderContent()}</main>
+
+             <Modal isOpen={isPasswordModalOpen} onClose={() => setIsPasswordModalOpen(false)}>
+                <form onSubmit={handlePasswordChange}>
+                    <div className="modal-header">
+                        <h2>Alterar Senha</h2>
+                        <p style={{color: 'var(--color-text-secondary)', marginTop: '8px'}}>Para sua segurança, informe sua senha atual e a nova senha desejada.</p>
+                    </div>
+                    <div style={{textAlign: 'left', display: 'flex', flexDirection: 'column', gap: '16px', margin: '24px 0'}}>
+                        <div className="input-group">
+                            <input
+                                type={showCurrentPassword ? "text" : "password"}
+                                name="currentPassword"
+                                placeholder="Senha Atual"
+                                required
+                            />
+                             <PasswordToggle isVisible={showCurrentPassword} onToggle={() => setShowCurrentPassword(!showCurrentPassword)} />
+                        </div>
+                        <div className="input-group">
+                            <input
+                                type={showNewPassword ? "text" : "password"}
+                                name="newPassword"
+                                placeholder="Nova Senha"
+                                required
+                            />
+                             <PasswordToggle isVisible={showNewPassword} onToggle={() => setShowNewPassword(!showNewPassword)} />
+                        </div>
+                         <div className="input-group">
+                            <input
+                                type={showNewPassword ? "text" : "password"}
+                                name="confirmPassword"
+                                placeholder="Confirme a Nova Senha"
+                                required
+                            />
+                        </div>
+                    </div>
+                    {passwordError && <p className="error-message" style={{opacity: 1}}>{passwordError}</p>}
+                    {passwordSuccess && <p className="success-message" style={{opacity: 1}}>{passwordSuccess}</p>}
+                    <div className="modal-actions">
+                        <button type="button" onClick={() => setIsPasswordModalOpen(false)} className="admin-btn secondary">Cancelar</button>
+                        <button type="submit" className="login-btn" disabled={isSubmitting}>
+                            {isSubmitting ? 'Salvando...' : 'Salvar Nova Senha'}
+                        </button>
+                    </div>
+                </form>
+            </Modal>
 
             <Modal isOpen={!!toolToDelete} onClose={() => setToolToDelete(null)}>
                 <div className="delete-modal"><div className="modal-header"><h2>Confirmar Exclusão</h2><p>Você tem certeza que quer excluir "<strong>{toolToDelete?.name}</strong>"?<br/>Esta ação não pode ser desfeita.</p></div><div className="modal-actions"><button onClick={() => setToolToDelete(null)} className="admin-btn secondary">Cancelar</button><button onClick={handleDeleteTool} className="login-btn confirm-delete-btn">Confirmar Exclusão</button></div></div>

@@ -25,7 +25,7 @@ export interface WaitingUser {
     status: 'pendente' | 'aprovado' | 'rejeitado';
 }
 
-export interface ActiveUser {
+export interface ActiveUser extends User {
     id: string; // UUID from Supabase
     nome: string;
     email: string;
