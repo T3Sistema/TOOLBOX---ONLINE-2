@@ -3,7 +3,7 @@ import { Tool } from '../types';
 
 interface ToolCardProps {
     tool: Tool;
-    onAccess: (link: string, name: string) => void;
+    onAccess: (tool: Tool) => void;
     style?: React.CSSProperties;
     isLocked: boolean;
 }
@@ -33,7 +33,7 @@ const ToolCard: React.FC<ToolCardProps> = ({ tool, onAccess, style, isLocked }) 
                     <button
                         type="button"
                         className="tool-access-btn"
-                        onClick={() => onAccess(tool.link, tool.name)}
+                        onClick={() => onAccess(tool)}
                     >
                         Acessar
                     </button>

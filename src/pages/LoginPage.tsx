@@ -54,7 +54,7 @@ const LoginPage: React.FC<LoginPageProps> = ({ onLoginSuccess, onAdminLoginSucce
         try {
             const { data, error } = await supabase
                 .from('perfis')
-                .select('id, nome, is_active, is_admin')
+                .select('id, nome, email, is_active, is_admin')
                 .eq('email', email)
                 .eq('senha', password)
                 .single();
@@ -66,11 +66,12 @@ const LoginPage: React.FC<LoginPageProps> = ({ onLoginSuccess, onAdminLoginSucce
             if (!data.is_active) {
                 throw new Error('Sua conta está desativada. Fale com o administrador.');
             }
+            
+            const user: User = { id: data.id, name: data.nome, email: data.email };
 
             if (data.is_admin) {
-                onAdminLoginSuccess({ id: data.id, name: data.nome });
+                onAdminLoginSuccess(user);
             } else {
-                const user: User = { id: data.id, name: data.nome };
                 onLoginSuccess(user);
             }
         } catch (error: any) {

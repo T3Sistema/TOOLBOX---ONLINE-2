@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useCallback } from 'react';
 import { Tool, WaitingUser, ActiveUser, User } from '../types';
 import Modal from '../components/Modal';
@@ -14,7 +15,7 @@ interface AdminPageProps {
 
 const EMOJIS = ['✨', '🚀', '🤖', '💡', '📈', '📊', '🎨', '📝', '🔗', '⚙️', '💬', '🎬', '🧠', '💼', '🛠️', '🌍'];
 
-type ToolFormData = Omit<Tool, 'id' | 'tooltip' | 'status' | 'category'> & { status: 'ativo' | 'inativo', category: string };
+type ToolFormData = Omit<Tool, 'id' | 'tooltip' | 'status' | 'category'> & { status: 'ativo' | 'inativo', category: string, requer_login: boolean };
 type CategoryFormData = { id: number | null; nome: string; descricao: string };
 type AdminFormData = { id: string | null; nome: string; email: string; senha?: string; };
 
@@ -72,7 +73,7 @@ const AdminPage: React.FC<AdminPageProps> = ({ user, allTools: initialTools, onL
 
     const initialToolFormState: ToolFormData = {
         name: '', description: '', category: '', icon: '✨', link: '',
-        video: '', dificuldade: 'Básico' as const, status: 'ativo' as const,
+        video: '', dificuldade: 'Básico' as const, status: 'ativo' as const, requer_login: false,
     };
     const [toolFormData, setToolFormData] = useState<ToolFormData>(initialToolFormState);
     
@@ -142,7 +143,7 @@ const AdminPage: React.FC<AdminPageProps> = ({ user, allTools: initialTools, onL
             setToolFormData({
                 name: toolToEdit.name, description: toolToEdit.description, category: toolToEdit.category,
                 icon: toolToEdit.icon, link: toolToEdit.link, video: toolToEdit.video || '',
-                dificuldade: toolToEdit.dificuldade, status: toolToEdit.status,
+                dificuldade: toolToEdit.dificuldade, status: toolToEdit.status, requer_login: toolToEdit.requer_login,
             });
         } else {
             setToolFormData(initialToolFormState);
@@ -246,7 +247,7 @@ const AdminPage: React.FC<AdminPageProps> = ({ user, allTools: initialTools, onL
             const toolPayload = {
                 nome: toolFormData.name, descricao: toolFormData.description, categoria_id: categoryData.id,
                 icon: toolFormData.icon, link: toolFormData.link, video_url: toolFormData.video || null,
-                dificuldade: toolFormData.dificuldade, status: toolFormData.status,
+                dificuldade: toolFormData.dificuldade, status: toolFormData.status, requer_login: toolFormData.requer_login,
             };
 
             if (toolToEdit) {
@@ -437,7 +438,8 @@ const AdminPage: React.FC<AdminPageProps> = ({ user, allTools: initialTools, onL
             
             if (error) throw error;
             
-            const currentToolIds = new Set(data.map((item: any) => item.ferramenta_id));
+            // FIX: Explicitly set the type of the Set to number to match the state type.
+            const currentToolIds = new Set<number>(data.map((item: any) => item.ferramenta_id));
             setSelectedTools(currentToolIds);
     
             const grouped = tools.reduce((acc, tool) => {
@@ -594,6 +596,7 @@ const AdminPage: React.FC<AdminPageProps> = ({ user, allTools: initialTools, onL
                     <div className="form-group full-width"><label htmlFor="video">URL do Vídeo Tutorial (Opcional)</label><input id="video" name="video" type="url" value={toolFormData.video} onChange={e => setToolFormData({...toolFormData, video: e.target.value})} /></div>
                     <div className="form-group"><label htmlFor="dificuldade">Nível de Dificuldade</label><select id="dificuldade" name="dificuldade" value={toolFormData.dificuldade} onChange={e => setToolFormData({...toolFormData, dificuldade: e.target.value as any})}><option value="Básico">Básico</option><option value="Intermediário">Intermediário</option><option value="Avançado">Avançado</option></select></div>
                     <div className="form-group"><label>Status</label><div className="status-toggle-container"><label className="status-toggle"><input type="checkbox" checked={toolFormData.status === 'ativo'} onChange={e => setToolFormData({...toolFormData, status: e.target.checked ? 'ativo' : 'inativo'})} /><span className="slider round"></span></label><span className="edit-tool-status-text" style={{textTransform: 'capitalize'}}>{toolFormData.status}</span></div></div>
+                    <div className="form-group full-width"><label>Exigir Login?</label><div className="status-toggle-container"><label className="status-toggle"><input type="checkbox" checked={toolFormData.requer_login} onChange={e => setToolFormData({...toolFormData, requer_login: e.target.checked})} /><span className="slider round"></span></label><span className="edit-tool-status-text" >{toolFormData.requer_login ? 'Sim' : 'Não'}</span></div></div>
                 </div>
                 <div className="admin-panel-actions"><button type="button" onClick={() => setActiveTab('tools')} className="admin-btn secondary">Cancelar</button><button type="submit" className="login-btn" disabled={isSubmitting}>{isSubmitting ? 'Salvando...' : 'Salvar Ferramenta'}</button></div>
             </form>

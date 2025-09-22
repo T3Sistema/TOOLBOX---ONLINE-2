@@ -4,6 +4,7 @@ import Header from '../components/Header';
 import ToolCard from '../components/ToolCard';
 import Modal from '../components/Modal';
 import { supabase } from '../supabaseClient';
+import ToolLoginPage from '../components/ToolLoginPage';
 
 interface ToolboxPageProps {
     user: User;
@@ -49,6 +50,7 @@ const ToolboxPage: React.FC<ToolboxPageProps> = ({ user, allTools, permittedTool
     const [selectedCategory, setSelectedCategory] = useState('all');
     const [searchTerm, setSearchTerm] = useState('');
     const [viewingTool, setViewingTool] = useState<{ link: string, name: string } | null>(null);
+    const [toolRequiringLogin, setToolRequiringLogin] = useState<Tool | null>(null);
     const [currentVideoUrl, setCurrentVideoUrl] = useState<string | null>(null);
     const [isPasswordModalOpen, setIsPasswordModalOpen] = useState(false);
     const [isSubmitting, setIsSubmitting] = useState(false);
@@ -97,8 +99,12 @@ const ToolboxPage: React.FC<ToolboxPageProps> = ({ user, allTools, permittedTool
         document.documentElement.setAttribute('data-theme', themes[nextIndex]);
     };
 
-    const handleAccessTool = (link: string, name: string) => {
-        setViewingTool({ link, name });
+    const handleAccessTool = (tool: Tool) => {
+        if (tool.requer_login) {
+            setToolRequiringLogin(tool);
+        } else {
+            setViewingTool({ link: tool.link, name: tool.name });
+        }
     };
 
      const handlePasswordChange = async (e: React.FormEvent<HTMLFormElement>) => {
@@ -161,6 +167,20 @@ const ToolboxPage: React.FC<ToolboxPageProps> = ({ user, allTools, permittedTool
         }
     };
 
+
+    if (toolRequiringLogin) {
+        return (
+            <ToolLoginPage
+                user={user}
+                toolName={toolRequiringLogin.name}
+                onSuccess={() => {
+                    setViewingTool({ link: toolRequiringLogin.link, name: toolRequiringLogin.name });
+                    setToolRequiringLogin(null);
+                }}
+                onCancel={() => setToolRequiringLogin(null)}
+            />
+        );
+    }
 
     if (viewingTool) {
         return (

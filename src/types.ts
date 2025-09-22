@@ -9,11 +9,13 @@ export interface Tool {
     dificuldade: 'Básico' | 'Intermediário' | 'Avançado';
     tooltip: string;
     status: 'ativo' | 'inativo';
+    requer_login: boolean;
 }
 
 export interface User {
     id: string;
     name: string;
+    email: string;
 }
 
 export interface WaitingUser {

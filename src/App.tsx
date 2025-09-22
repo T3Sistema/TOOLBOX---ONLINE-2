@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useCallback } from 'react';
 import LoginPage from './pages/LoginPage';
 import ToolboxPage from './pages/ToolboxPage';
@@ -108,6 +109,7 @@ const App: React.FC = () => {
                     video_url,
                     dificuldade,
                     status,
+                    requer_login,
                     categorias ( nome )
                 `);
 
@@ -124,7 +126,8 @@ const App: React.FC = () => {
                 video: tool.video_url || '',
                 dificuldade: tool.dificuldade || 'Básico',
                 tooltip: `Acessar a ferramenta ${tool.nome || ''}`,
-                status: tool.status
+                status: tool.status,
+                requer_login: tool.requer_login || false,
             }));
             setAllTools(tools);
         } catch (error) {
@@ -209,6 +212,7 @@ const App: React.FC = () => {
                     dificuldade: tool.dificuldade || 'Básico',
                     tooltip: `Acessar a ferramenta ${tool.nome || ''}`,
                     status: tool.status,
+                    requer_login: tool.requer_login || false,
                 }));
     
             setPermittedTools(userTools);
@@ -299,6 +303,7 @@ const App: React.FC = () => {
                     allTools={allTools}
                     permittedTools={permittedTools}
                     onOnboardingComplete={handleOnboardingComplete}
+                    // FIX: Changed onLogout to handleLogout as 'onLogout' is not defined.
                     onLogout={handleLogout}
                 />
             )}
