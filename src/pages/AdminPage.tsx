@@ -1,4 +1,5 @@
 
+
 import React, { useState, useEffect, useCallback } from 'react';
 import { Tool, WaitingUser, ActiveUser, User } from '../types';
 import Modal from '../components/Modal';
@@ -319,37 +320,76 @@ const AdminPage: React.FC<AdminPageProps> = ({ user, allTools: initialTools, onL
             alert("Selecione pelo menos uma ferramenta para o usuário.");
             return;
         }
-
+    
         setIsSubmitting(true);
-
+    
         try {
+            // 1. Create user profile
             const { data: profileData, error: profileError } = await supabase
                 .from('perfis').insert({
                     nome: userToApprove.nome, email: userToApprove.email,
                     senha: userToApprove.password, is_active: true
                 }).select('id').single();
-
+    
             if (profileError || !profileData) throw profileError || new Error("Falha ao criar perfil.");
-
+    
             const newUserId = profileData.id;
+    
+            // 2. Link tools to the new profile
             const toolLinks = Array.from(selectedTools).map(toolId => ({
                 perfil_id: newUserId, ferramenta_id: toolId
             }));
-
+    
             const { error: linkError } = await supabase.from('perfil_ferramentas').insert(toolLinks);
             if (linkError) {
+                // Rollback profile creation if linking fails
                 await supabase.from('perfis').delete().eq('id', newUserId);
                 throw linkError;
             }
-
+    
+            // 3. Update waiting list status
             const { error: updateError } = await supabase.from('lista_de_espera').update({ status: 'aprovado' }).eq('id', userToApprove.id);
             if (updateError) throw updateError;
             
+            // 4. Send notification via webhook after all DB operations are successful
+            try {
+                const approvedToolNames = tools
+                    .filter(tool => selectedTools.has(tool.id))
+                    .map(tool => tool.name);
+    
+                const webhookPayload = {
+                    nome: userToApprove.nome,
+                    email: userToApprove.email,
+                    telefone: userToApprove.telefone,
+                    ferramentas_aprovadas: approvedToolNames,
+                };
+    
+                const webhookResponse = await fetch('https://webhook.triad3.io/webhook/notific-toolbox', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify(webhookPayload),
+                });
+    
+                if (!webhookResponse.ok) {
+                    console.error('Webhook notification failed:', webhookResponse.statusText, await webhookResponse.text());
+                }
+            } catch (webhookError) {
+                console.error('Error sending webhook notification:', webhookError);
+            }
+    
+            // 5. Update UI
             showToast(`Usuário ${userToApprove.nome} aprovado com ${selectedTools.size} ferramentas!`);
             await fetchWaitingList();
             await fetchActiveUsers();
-        } catch (error: any) { alert(`Erro: ${error.message}`);
-        } finally { setUserToApprove(null); setIsSubmitting(false); }
+    
+        } catch (error: any) { 
+            alert(`Erro no processo de aprovação: ${error.message}`);
+        } finally { 
+            setUserToApprove(null); 
+            setIsSubmitting(false); 
+        }
     };
 
     const handleDenyUser = async () => {
@@ -387,18 +427,46 @@ const AdminPage: React.FC<AdminPageProps> = ({ user, allTools: initialTools, onL
     const handleDeleteCategory = async () => {
         if (!categoryToDelete) return;
         try {
-            const { data: toolsInCategory } = await supabase.from('ferramentas').select('id').eq('categoria_id', categoryToDelete.id).limit(1);
+            // 1. Check for associated tools
+            const { data: toolsInCategory, error: checkError } = await supabase
+                .from('ferramentas')
+                .select('id')
+                .eq('categoria_id', categoryToDelete.id)
+                .limit(1);
+
+            if (checkError) {
+                throw new Error(`Erro ao verificar ferramentas associadas: ${checkError.message}`);
+            }
+
             if (toolsInCategory && toolsInCategory.length > 0) {
                 alert(`Não é possível excluir "${categoryToDelete.nome}" pois existem ferramentas associadas a ela.`);
-                setCategoryToDelete(null);
                 return;
             }
-            const { error } = await supabase.from('categorias').delete().eq('id', categoryToDelete.id);
-            if (error) throw error;
+
+            // 2. Perform deletion and select the deleted row to confirm
+            const { data: deletedData, error: deleteError } = await supabase
+                .from('categorias')
+                .delete()
+                .eq('id', categoryToDelete.id)
+                .select(); // Ask Supabase to return the deleted item
+
+            if (deleteError) {
+                throw deleteError;
+            }
+            
+            // 3. Verify if deletion was successful
+            if (!deletedData || deletedData.length === 0) {
+                 // This could happen if RLS policies prevent the deletion without throwing an error.
+                 throw new Error("A categoria não pôde ser excluída. Verifique suas permissões ou se ela ainda existe.");
+            }
+
             showToast("Categoria excluída com sucesso!");
             await fetchCategories();
-        } catch (error: any) { alert(`Erro: ${error.message}`);
-        } finally { setCategoryToDelete(null); }
+        } catch (error: any) { 
+            alert(`Erro ao excluir categoria: ${error.message}`);
+        } finally { 
+            setCategoryToDelete(null); 
+        }
     };
     
     const handleUpdateActiveUser = async (user: ActiveUser, updates: Partial<Pick<ActiveUser, 'is_active'>>) => {
